@@ -1,0 +1,29 @@
+[package]
+name = "uniclip"
+version = "0.1.0"
+edition = "2021"
+
+[profile.release]
+strip = true
+lto = true
+opt-level = "s"
+codegen-units = 1
+
+[dependencies]
+anyhow = "1.0.57"
+arboard = { version = "2.1", features = [] }
+cfg-if = "1.0.0"
+futures = "0.3.21"
+tokio = { version = "1.18.0", features = ["sync"] }
+tray-item = "0.7.0"
+
+
+[target.'cfg(windows)'.build-dependencies]
+winres = "0.1"
+
+[package.metadata.winres]
+ProductName = "UniClip"
+ProductVersion = "0.1.0"
+FileDescription = "UniClip"
+OriginalFilename = "UniClip.exe"
+LegalCopyright = "Copyright © 2022"
