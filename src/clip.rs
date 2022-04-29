@@ -1,9 +1,5 @@
 use arboard::*;
-use std::{
-    sync::mpsc::Sender,
-    thread::sleep,
-    time::Duration,
-};
+use std::{sync::mpsc::Sender, thread::sleep, time::Duration};
 
 #[derive(Debug)]
 pub enum ClipMsg {
@@ -72,7 +68,7 @@ impl ClipMonitor {
 
             if let Ok(image) = self.clip.get_image() {
                 let image_info = (image.width, image.height, image.bytes.len());
-                if  image_info != self.image_info {
+                if image_info != self.image_info {
                     self.image_info = image_info;
                     tx.send(ClipMsg::image(&image.bytes)).unwrap();
                 }

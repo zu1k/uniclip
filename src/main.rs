@@ -3,17 +3,15 @@
     windows_subsystem = "windows"
 )]
 
-use std::sync::mpsc::{channel};
+use prost::Message;
+use std::sync::mpsc::channel;
+include!(concat!(env!("OUT_DIR"), "/proto.rs"));
 
-mod proto;
 mod clip;
 use clip::*;
-use prost::Message;
-
-use crate::proto::{clip_msg, ClipMsg};
+mod trans;
 
 fn main() {
-
     let mut msg = ClipMsg::default();
     msg.id = 0;
     msg.set_typ(clip_msg::MsgType::Text);

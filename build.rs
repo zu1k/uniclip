@@ -13,7 +13,6 @@ fn main() {
     proto();
 }
 
-
 fn proto() {
     prost_build::compile_protos(&["src/proto/msg.proto"], &["src/"]).unwrap();
 }
