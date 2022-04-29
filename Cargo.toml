@@ -16,10 +16,17 @@ cfg-if = "1.0.0"
 futures = "0.3.21"
 tokio = { version = "1.18.0", features = ["sync"] }
 tray-item = "0.7.0"
+prost = "0.10"
+# Only necessary if using Protobuf well-known types:
+prost-types = "0.10"
+bytes = "1.1.0"
 
 
 [target.'cfg(windows)'.build-dependencies]
 winres = "0.1"
+
+[build-dependencies]
+prost-build = "0.10.1"
 
 [package.metadata.winres]
 ProductName = "UniClip"

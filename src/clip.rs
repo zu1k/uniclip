@@ -32,7 +32,7 @@ impl Clip {
         Self { clip: clipboard }
     }
 
-    pub fn set_text(mut self, text: String) -> anyhow::Result<()> {
+    pub fn set_text(&mut self, text: String) -> anyhow::Result<()> {
         self.clip.set_text(text)?;
         Ok(())
     }

@@ -1,0 +1,16 @@
+syntax = "proto3";
+
+package proto;
+
+message ClipMsg {
+    uint32 id = 1;
+
+    enum MsgType {
+        TEXT = 0;
+        IMAGE = 1;
+    }
+    MsgType typ = 2;
+
+    optional string text = 3;
+    optional bytes image = 4;
+}
