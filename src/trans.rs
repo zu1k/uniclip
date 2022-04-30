@@ -1,9 +1,10 @@
+use crate::{proto::ClipMsg, Settings};
 use futures::StreamExt;
 use libp2p::{
     core::upgrade,
     gossipsub::{
-        self, error::PublishError, Gossipsub, GossipsubEvent, GossipsubMessage,
-        IdentTopic as Topic, MessageAuthenticity, MessageId, ValidationMode,
+        self, error::PublishError, Gossipsub, GossipsubEvent, IdentTopic as Topic,
+        MessageAuthenticity, ValidationMode,
     },
     identity,
     mdns::{Mdns, MdnsEvent},
@@ -12,15 +13,9 @@ use libp2p::{
     tcp::TokioTcpConfig,
     NetworkBehaviour, PeerId, Transport,
 };
-use std::{
-    collections::hash_map::DefaultHasher,
-    hash::{Hash, Hasher},
-    time::Duration,
-};
-use tokio::sync::mpsc::Receiver;
-
-use crate::{proto::ClipMsg, Settings};
 use prost::Message;
+use std::time::Duration;
+use tokio::sync::mpsc::Receiver;
 
 #[derive(NetworkBehaviour)]
 #[behaviour(event_process = true)]
@@ -33,7 +28,6 @@ struct MyBehaviour {
 }
 
 impl NetworkBehaviourEventProcess<GossipsubEvent> for MyBehaviour {
-    // Called when `floodsub` produces an event.
     fn inject_event(&mut self, message: GossipsubEvent) {
         if let GossipsubEvent::Message {
             propagation_source: _,
@@ -42,7 +36,6 @@ impl NetworkBehaviourEventProcess<GossipsubEvent> for MyBehaviour {
         } = message
         {
             if let Ok(clip_msg) = ClipMsg::decode(message.data.as_slice()) {
-                println!("Received: '{:?}' from {:?}", clip_msg, message.source);
                 self.from_net_tx.send(clip_msg).unwrap();
             }
         }
@@ -95,17 +88,10 @@ pub async fn trans(
         .multiplex(mplex::MplexConfig::new())
         .boxed();
 
-    let message_id_fn = |message: &GossipsubMessage| {
-        let mut s = DefaultHasher::new();
-        message.data.hash(&mut s);
-        MessageId::from(s.finish().to_string())
-    };
-
     let gossipsub_config = gossipsub::GossipsubConfigBuilder::default()
         .heartbeat_interval(Duration::from_secs(10)) // This is set to aid debugging by not cluttering the log space
         .validation_mode(ValidationMode::Strict) // This sets the kind of message validation. The default is Strict (enforce message signing)
-        .message_id_fn(message_id_fn) // content-address messages. No two messages of the
-        // same content will be propagated.
+        .max_transmit_size(1024 * 1024 * 50)
         .build()
         .expect("Valid config");
     // build a gossipsub network behaviour

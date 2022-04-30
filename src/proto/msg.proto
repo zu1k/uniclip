@@ -12,5 +12,12 @@ message ClipMsg {
     MsgType typ = 2;
 
     optional string text = 3;
-    optional bytes image = 4;
+
+    message ImageData {
+        bytes data = 1;
+        uint32 width = 2;
+        uint32 height = 3;
+    }
+
+    optional ImageData image = 4;
 }

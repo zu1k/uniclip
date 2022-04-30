@@ -43,19 +43,28 @@ fn main() {
     let monitor_clip = clip.clone();
 
     std::thread::spawn(move || {
-        monitor_clip.notify(|msg| {
-            println!("local clipboard notify: {msg:?}");
-
-            match msg {
-                ClipMsg::Text(text) => {
-                    let mut clip_msg = proto::ClipMsg {
-                        text: Some(text),
-                        ..Default::default()
-                    };
-                    clip_msg.set_typ(proto::clip_msg::MsgType::Text);
-                    to_net_tx.blocking_send(clip_msg).unwrap();
-                }
-                ClipMsg::Image(_) => todo!(),
+        monitor_clip.notify(|msg| match msg {
+            ClipMsg::Text(text) => {
+                println!("local clipboard notify text: {text}");
+                let mut clip_msg = proto::ClipMsg {
+                    text: Some(text),
+                    ..Default::default()
+                };
+                clip_msg.set_typ(proto::clip_msg::MsgType::Text);
+                to_net_tx.blocking_send(clip_msg).unwrap();
+            }
+            ClipMsg::Image(image) => {
+                println!("local clipboard notify image");
+                let mut clip_msg = proto::ClipMsg {
+                    image: Some(proto::clip_msg::ImageData {
+                        data: image.2,
+                        width: image.0 as u32,
+                        height: image.1 as u32,
+                    }),
+                    ..Default::default()
+                };
+                clip_msg.set_typ(proto::clip_msg::MsgType::Image);
+                to_net_tx.blocking_send(clip_msg).unwrap();
             }
         });
     });
@@ -63,10 +72,19 @@ fn main() {
     std::thread::spawn(move || {
         loop {
             if let Ok(msg) = from_net_rx.recv() {
-                if msg.typ() == proto::clip_msg::MsgType::Text {
-                    let text = msg.text();
-                    println!("receive from net: {text}");
-                    clip.clone().set_text(text).unwrap();
+                match msg.typ() {
+                    proto::clip_msg::MsgType::Text => {
+                        let text = msg.text();
+                        println!("receive from net: {text}");
+                        clip.clone().set_text(text).unwrap();
+                    }
+                    proto::clip_msg::MsgType::Image => {
+                        let image = msg.image.unwrap();
+                        println!("receive from net: image");
+                        clip.clone()
+                            .set_image((image.width as usize, image.height as usize, &image.data))
+                            .unwrap();
+                    }
                 }
             }
         }

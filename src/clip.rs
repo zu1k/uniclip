@@ -8,7 +8,7 @@ use std::{
 #[derive(Debug)]
 pub enum ClipMsg {
     Text(String),
-    Image(Vec<u8>),
+    Image((usize, usize, Vec<u8>)),
 }
 
 impl ClipMsg {
@@ -16,8 +16,8 @@ impl ClipMsg {
         ClipMsg::Text(txt)
     }
 
-    pub fn image(data: &[u8]) -> ClipMsg {
-        ClipMsg::Image(data.to_owned())
+    pub fn image(width: usize, height: usize, data: &[u8]) -> ClipMsg {
+        ClipMsg::Image((width, height, data.to_owned()))
     }
 }
 
@@ -61,7 +61,7 @@ impl Clip {
                     {
                         *self.image_info.write().unwrap() = image_info;
                     }
-                    on_clipboard_change(ClipMsg::image(&image.bytes));
+                    on_clipboard_change(ClipMsg::image(image.width, image.height, &image.bytes));
                 }
             }
 
@@ -74,6 +74,20 @@ impl Clip {
         clip.set_text(text.to_owned())?;
         {
             *self.text.write().unwrap() = text.to_owned();
+        }
+        sleep(Duration::from_secs(1));
+        Ok(())
+    }
+
+    pub fn set_image(self: Arc<Self>, image: (usize, usize, &[u8])) -> anyhow::Result<()> {
+        let mut clip = Clipboard::new().unwrap();
+        clip.set_image(ImageData {
+            width: image.0,
+            height: image.1,
+            bytes: image.2.into(),
+        })?;
+        {
+            *self.image_info.write().unwrap() = (image.0, image.1, image.2.len());
         }
         sleep(Duration::from_secs(1));
         Ok(())
