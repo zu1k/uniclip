@@ -3,58 +3,74 @@
     windows_subsystem = "windows"
 )]
 
-use std::error::Error;
+use config::Config;
+use serde::Deserialize;
+use std::sync::Arc;
 use tokio::sync::mpsc::{channel, Receiver, Sender};
 
 mod clip;
 use clip::*;
 mod proto;
 mod trans;
+mod tray;
 
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn Error>> {
-    let mut clip = Clip::new();
-    clip.set_text("UniClip".into()).unwrap();
+#[derive(Debug, Default, Deserialize)]
+pub struct Settings {
+    domain: String,
+}
 
-    let (from_net_tx, mut from_net_rx): (Sender<proto::ClipMsg>, Receiver<proto::ClipMsg>) =
-        channel(10);
+fn main() {
+    let settings = Config::builder()
+        .add_source(config::File::with_name("settings"))
+        .add_source(config::Environment::with_prefix("UNICLIP"))
+        .build()
+        .unwrap();
+
+    let settings = settings.try_deserialize::<Settings>().unwrap();
+
+    let (from_net_tx, from_net_rx) = std::sync::mpsc::channel();
     let (to_net_tx, to_net_rx): (Sender<proto::ClipMsg>, Receiver<proto::ClipMsg>) = channel(10);
 
-    tokio::spawn(async move { trans::trans(from_net_tx, to_net_rx).await });
-
-    let (clip_tx, clip_rx) = std::sync::mpsc::channel();
-
-    std::thread::spawn(|| {
-        let clip_monitor = ClipMonitor::new();
-        clip_monitor.notify(clip_tx);
+    std::thread::spawn(move || {
+        tokio::runtime::Builder::new_multi_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(async move { trans::trans(&settings, from_net_tx, to_net_rx).await });
     });
 
-    tokio::spawn(async move {
-        loop {
-            if let Some(msg) = from_net_rx.recv().await {
-                println!("{msg:?}");
-                if msg.typ() == proto::clip_msg::MsgType::Text {
-                    let text = msg.text();
-                    clip.set_text(text.to_owned());
-                }
-            }
-        }
-    });
+    let clip = Arc::new(Clip::new());
+    let monitor_clip = clip.clone();
 
-    loop {
-        if let Ok(msg) = clip_rx.recv() {
-            println!("{msg:?}");
+    std::thread::spawn(move || {
+        monitor_clip.notify(|msg| {
+            println!("local clipboard notify: {msg:?}");
 
             match msg {
                 ClipMsg::Text(text) => {
-                    let mut clip_msg = proto::ClipMsg::default();
-                    clip_msg.id = 0;
+                    let mut clip_msg = proto::ClipMsg {
+                        text: Some(text),
+                        ..Default::default()
+                    };
                     clip_msg.set_typ(proto::clip_msg::MsgType::Text);
-                    clip_msg.text = Some(text);
-                    to_net_tx.send(clip_msg).await;
+                    to_net_tx.blocking_send(clip_msg).unwrap();
                 }
                 ClipMsg::Image(_) => todo!(),
             }
+        });
+    });
+
+    std::thread::spawn(move || {
+        loop {
+            if let Ok(msg) = from_net_rx.recv() {
+                if msg.typ() == proto::clip_msg::MsgType::Text {
+                    let text = msg.text();
+                    println!("receive from net: {text}");
+                    clip.clone().set_text(text).unwrap();
+                }
+            }
         }
-    }
+    });
+
+    tray::start_tray();
 }

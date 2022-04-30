@@ -1,6 +1,6 @@
 use arboard::*;
 use std::{
-    sync::mpsc::{channel, Receiver, Sender},
+    sync::{Arc, RwLock},
     thread::sleep,
     time::Duration,
 };
@@ -22,63 +22,60 @@ impl ClipMsg {
 }
 
 pub struct Clip {
-    clip: Clipboard,
-}
-
-impl Clip {
-    pub fn new() -> Self {
-        let clipboard = Clipboard::new().unwrap();
-
-        Self { clip: clipboard }
-    }
-
-    pub fn set_text(&mut self, text: String) -> anyhow::Result<()> {
-        self.clip.set_text(text)?;
-        Ok(())
-    }
-}
-
-pub struct ClipMonitor {
-    clip: Clipboard,
-
-    text: String,
-    image_info: (usize, usize, usize), // width, height, len
+    text: RwLock<String>,
+    image_info: RwLock<(usize, usize, usize)>, // width, height, len
 
     delay_millis: u64,
 }
 
-impl ClipMonitor {
+impl Clip {
     pub fn new() -> Self {
-        let clipboard = Clipboard::new().unwrap();
-
         Self {
-            clip: clipboard,
-            text: "".into(),
-            image_info: (0, 0, 0),
+            text: RwLock::new("".into()),
+            image_info: RwLock::new((0, 0, 0)),
 
             delay_millis: 200,
         }
     }
 
-    pub fn notify(mut self, tx: Sender<ClipMsg>) {
+    pub fn notify<F>(self: Arc<Self>, on_clipboard_change: F)
+    where
+        F: Fn(ClipMsg),
+    {
+        let mut clip = Clipboard::new().unwrap();
         loop {
-            if let Ok(text) = self.clip.get_text() {
-                if text != self.text {
-                    // new text, set and trans
-                    self.text = text.clone();
-                    tx.send(ClipMsg::text(text));
+            if let Ok(text) = clip.get_text() {
+                let origin = { self.text.read().unwrap().to_owned() };
+                if text != origin {
+                    {
+                        *self.text.write().unwrap() = text.clone();
+                    }
+                    on_clipboard_change(ClipMsg::text(text));
                 }
             }
 
-            if let Ok(image) = self.clip.get_image() {
+            if let Ok(image) = clip.get_image() {
                 let image_info = (image.width, image.height, image.bytes.len());
-                if image_info != self.image_info {
-                    self.image_info = image_info;
-                    tx.send(ClipMsg::image(&image.bytes)).unwrap();
+                let origin = { self.image_info.read().unwrap().to_owned() };
+                if image_info != origin {
+                    {
+                        *self.image_info.write().unwrap() = image_info;
+                    }
+                    on_clipboard_change(ClipMsg::image(&image.bytes));
                 }
             }
 
             sleep(Duration::from_millis(self.delay_millis));
         }
+    }
+
+    pub fn set_text(self: Arc<Self>, text: &str) -> anyhow::Result<()> {
+        let mut clip = Clipboard::new().unwrap();
+        clip.set_text(text.to_owned())?;
+        {
+            *self.text.write().unwrap() = text.to_owned();
+        }
+        sleep(Duration::from_secs(1));
+        Ok(())
     }
 }

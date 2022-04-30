@@ -10,24 +10,31 @@ opt-level = "s"
 codegen-units = 1
 
 [dependencies]
-anyhow = "1.0.57"
+anyhow = "1.0"
 arboard = { version = "2.1", features = [] }
-cfg-if = "1.0.0"
-futures = "0.3.21"
-tokio = { version = "1.18.0", features = ["full"] }
-tray-item = "0.7.0"
+cfg-if = "1.0"
+futures = "0.3"
+tokio = { version = "1.18", features = ["sync", "rt-multi-thread", "macros"] }
+tray-item = "0.7"
 prost = "0.10"
-# Only necessary if using Protobuf well-known types:
-prost-types = "0.10"
-bytes = "1.1.0"
-libp2p = { version = "0.44", features = ["tcp-tokio"] }
+bytes = "1.1"
+libp2p = { version = "0.44", default-features = false, features = ["tcp-tokio", "gossipsub", "mdns", "mplex", "noise"] }
+log = "0.4"
+config = { version = "0.13", default-features = false, features = ["toml"] }
+serde = { version = "1.0", features = ["derive"] }
+
+
+[target.'cfg(target_os = "linux")'.dependencies]
+gtk = "0.15"
+
+
+[build-dependencies]
+prost-build = "0.10"
 
 
 [target.'cfg(windows)'.build-dependencies]
 winres = "0.1"
 
-[build-dependencies]
-prost-build = "0.10.1"
 
 [package.metadata.winres]
 ProductName = "UniClip"

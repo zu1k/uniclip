@@ -1,7 +1,10 @@
 use futures::StreamExt;
 use libp2p::{
     core::upgrade,
-    floodsub::{self, Floodsub, FloodsubEvent},
+    gossipsub::{
+        self, error::PublishError, Gossipsub, GossipsubEvent, GossipsubMessage,
+        IdentTopic as Topic, MessageAuthenticity, MessageId, ValidationMode,
+    },
     identity,
     mdns::{Mdns, MdnsEvent},
     mplex, noise,
@@ -9,29 +12,38 @@ use libp2p::{
     tcp::TokioTcpConfig,
     NetworkBehaviour, PeerId, Transport,
 };
-use tokio::sync::mpsc::{Receiver, Sender};
+use std::{
+    collections::hash_map::DefaultHasher,
+    hash::{Hash, Hasher},
+    time::Duration,
+};
+use tokio::sync::mpsc::Receiver;
 
-use crate::proto::ClipMsg;
+use crate::{proto::ClipMsg, Settings};
 use prost::Message;
 
 #[derive(NetworkBehaviour)]
 #[behaviour(event_process = true)]
 struct MyBehaviour {
-    floodsub: Floodsub,
+    gossipsub: Gossipsub,
     mdns: Mdns,
 
     #[behaviour(ignore)]
-    from_net_tx: Sender<ClipMsg>,
+    from_net_tx: std::sync::mpsc::Sender<ClipMsg>,
 }
 
-impl NetworkBehaviourEventProcess<FloodsubEvent> for MyBehaviour {
+impl NetworkBehaviourEventProcess<GossipsubEvent> for MyBehaviour {
     // Called when `floodsub` produces an event.
-    fn inject_event(&mut self, message: FloodsubEvent) {
-        if let FloodsubEvent::Message(message) = message {
+    fn inject_event(&mut self, message: GossipsubEvent) {
+        if let GossipsubEvent::Message {
+            propagation_source: _,
+            message_id: _,
+            message,
+        } = message
+        {
             if let Ok(clip_msg) = ClipMsg::decode(message.data.as_slice()) {
                 println!("Received: '{:?}' from {:?}", clip_msg, message.source);
-
-                self.from_net_tx.send(clip_msg);
+                self.from_net_tx.send(clip_msg).unwrap();
             }
         }
     }
@@ -41,14 +53,15 @@ impl NetworkBehaviourEventProcess<MdnsEvent> for MyBehaviour {
     fn inject_event(&mut self, event: MdnsEvent) {
         match event {
             MdnsEvent::Discovered(list) => {
-                for (peer, _) in list {
-                    self.floodsub.add_node_to_partial_view(peer);
+                for (peer, addr) in list {
+                    println!("new peer: {peer} - {addr}");
+                    self.gossipsub.add_explicit_peer(&peer);
                 }
             }
             MdnsEvent::Expired(list) => {
                 for (peer, _) in list {
                     if !self.mdns.has_node(&peer) {
-                        self.floodsub.remove_node_from_partial_view(&peer);
+                        self.gossipsub.remove_explicit_peer(&peer);
                     }
                 }
             }
@@ -56,15 +69,21 @@ impl NetworkBehaviourEventProcess<MdnsEvent> for MyBehaviour {
     }
 }
 
-pub async fn trans(from_net_tx: Sender<ClipMsg>, to_net_rx: Receiver<ClipMsg>) {
+pub async fn trans(
+    settings: &Settings,
+    from_net_tx: std::sync::mpsc::Sender<ClipMsg>,
+    to_net_rx: Receiver<ClipMsg>,
+) -> ! {
     // Create a random PeerId
-    let id_keys = identity::Keypair::generate_ed25519();
-    let peer_id = PeerId::from(id_keys.public());
-    println!("Local peer id: {:?}", peer_id);
+    let local_key = identity::Keypair::generate_ed25519();
+    let local_peer_id = PeerId::from(local_key.public());
+    println!("Local peer id: {:?}", local_peer_id);
+
+    let topic = Topic::new(settings.domain.to_owned());
 
     // Create a keypair for authenticated encryption of the transport.
     let noise_keys = noise::Keypair::<noise::X25519Spec>::new()
-        .into_authentic(&id_keys)
+        .into_authentic(&local_key)
         .expect("Signing libp2p-noise static DH keypair failed.");
 
     // Create a tokio-based TCP transport use noise for authenticated
@@ -76,21 +95,36 @@ pub async fn trans(from_net_tx: Sender<ClipMsg>, to_net_rx: Receiver<ClipMsg>) {
         .multiplex(mplex::MplexConfig::new())
         .boxed();
 
-    // Create a Floodsub topic
-    let floodsub_topic = floodsub::Topic::new("chat");
+    let message_id_fn = |message: &GossipsubMessage| {
+        let mut s = DefaultHasher::new();
+        message.data.hash(&mut s);
+        MessageId::from(s.finish().to_string())
+    };
+
+    let gossipsub_config = gossipsub::GossipsubConfigBuilder::default()
+        .heartbeat_interval(Duration::from_secs(10)) // This is set to aid debugging by not cluttering the log space
+        .validation_mode(ValidationMode::Strict) // This sets the kind of message validation. The default is Strict (enforce message signing)
+        .message_id_fn(message_id_fn) // content-address messages. No two messages of the
+        // same content will be propagated.
+        .build()
+        .expect("Valid config");
+    // build a gossipsub network behaviour
+    let gossipsub: gossipsub::Gossipsub =
+        gossipsub::Gossipsub::new(MessageAuthenticity::Signed(local_key), gossipsub_config)
+            .expect("Correct configuration");
 
     // Create a Swarm to manage peers and events.
     let mut swarm = {
         let mdns = Mdns::new(Default::default()).await.unwrap();
         let mut behaviour = MyBehaviour {
-            floodsub: Floodsub::new(peer_id.clone()),
+            gossipsub,
             mdns,
             from_net_tx,
         };
 
-        behaviour.floodsub.subscribe(floodsub_topic.clone());
+        behaviour.gossipsub.subscribe(&topic).unwrap();
 
-        SwarmBuilder::new(transport, behaviour, peer_id)
+        SwarmBuilder::new(transport, behaviour, local_peer_id)
             // We want the connection background tasks to be spawned
             // onto the tokio runtime.
             .executor(Box::new(|fut| {
@@ -110,15 +144,20 @@ pub async fn trans(from_net_tx: Sender<ClipMsg>, to_net_rx: Receiver<ClipMsg>) {
         tokio::select! {
             clip_msg = to_net_rx.recv() => {
                 if let Some(clip_msg) = clip_msg {
-                    swarm.behaviour_mut().floodsub.publish(floodsub_topic.clone(), clip_msg.encode_to_vec());
+                    match swarm.behaviour_mut().gossipsub.publish(topic.clone(), clip_msg.encode_to_vec()) {
+                        Ok(_) => {},
+                        Err(err) => {
+                            match err {
+                                PublishError::InsufficientPeers => {},
+                                _ => {panic!("{err}");}
+                            }
+                        },
+                    }
                 }
             }
 
-            event = swarm.select_next_some() => match event {
-                SwarmEvent::NewListenAddr { address, .. } => {
-                    println!("Listening on {:?}", address);
-                }
-                _ => {}
+            event = swarm.select_next_some() => if let SwarmEvent::NewListenAddr { address, .. } =  event {
+                println!("Listening on {:?}", address);
             }
         }
     }
