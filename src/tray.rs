@@ -38,5 +38,13 @@ cfg_if::cfg_if! {
 
             gtk::main();
         }
+    } else if #[cfg(target_os = "macos")] {
+        pub fn start_tray() {
+            let mut tray = TrayItem::new("Unified Clipboard", "").unwrap();
+            tray.add_label("Unified Clipboard").unwrap();
+            let mut inner = tray.inner_mut();
+            inner.add_quit_item("Quit");
+            inner.display();
+        }
     }
 }
