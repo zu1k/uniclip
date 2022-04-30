@@ -20,7 +20,7 @@ prost = "0.10"
 # Only necessary if using Protobuf well-known types:
 prost-types = "0.10"
 bytes = "1.1.0"
-libp2p = "0.44.0"
+libp2p = { version = "0.44", features = ["tcp-tokio"] }
 
 
 [target.'cfg(windows)'.build-dependencies]

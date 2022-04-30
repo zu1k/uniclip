@@ -1,5 +1,9 @@
 use arboard::*;
-use std::{sync::mpsc::Sender, thread::sleep, time::Duration};
+use std::{
+    sync::mpsc::{channel, Receiver, Sender},
+    thread::sleep,
+    time::Duration,
+};
 
 #[derive(Debug)]
 pub enum ClipMsg {
@@ -62,7 +66,7 @@ impl ClipMonitor {
                 if text != self.text {
                     // new text, set and trans
                     self.text = text.clone();
-                    tx.send(ClipMsg::text(text)).unwrap();
+                    tx.send(ClipMsg::text(text));
                 }
             }
 
