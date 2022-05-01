@@ -2814,14 +2814,41 @@ dependencies = [
  "config",
  "futures",
  "gtk",
- "libp2p",
  "log",
- "prost 0.10.1",
- "prost-build 0.10.1",
  "serde",
  "tokio",
  "tray-item",
+ "uniclip-net",
+ "uniclip-proto",
  "winres",
+]
+
+[[package]]
+name = "uniclip-android"
+version = "0.1.0"
+dependencies = [
+ "tokio",
+ "uniclip-net",
+ "uniclip-proto",
+]
+
+[[package]]
+name = "uniclip-net"
+version = "0.1.0"
+dependencies = [
+ "futures",
+ "libp2p",
+ "prost 0.10.1",
+ "tokio",
+ "uniclip-proto",
+]
+
+[[package]]
+name = "uniclip-proto"
+version = "0.1.0"
+dependencies = [
+ "prost 0.10.1",
+ "prost-build 0.10.1",
 ]
 
 [[package]]

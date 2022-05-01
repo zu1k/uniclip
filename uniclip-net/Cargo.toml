@@ -1,0 +1,12 @@
+[package]
+name = "uniclip-net"
+version = "0.1.0"
+edition = "2021"
+
+
+[dependencies]
+libp2p = { version = "0.44", default-features = false, features = ["tcp-tokio", "gossipsub", "mdns", "mplex", "noise"] }
+futures = "0.3"
+tokio = { version = "1.18", features = ["sync", "rt-multi-thread", "macros"] }
+prost = "0.10"
+uniclip-proto = { path = "../uniclip-proto" }

@@ -1,0 +1,10 @@
+[package]
+name = "uniclip-android"
+version = "0.1.0"
+edition = "2021"
+
+
+[dependencies]
+uniclip-net = { path = "../uniclip-net" }
+uniclip-proto = { path = "../uniclip-proto" }
+tokio = { version = "1.18", features = ["sync", "rt-multi-thread", "macros"] }

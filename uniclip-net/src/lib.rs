@@ -1,4 +1,3 @@
-use crate::{proto::ClipMsg, Settings};
 use futures::StreamExt;
 use libp2p::{
     core::upgrade,
@@ -14,8 +13,9 @@ use libp2p::{
     NetworkBehaviour, PeerId, Transport,
 };
 use prost::Message;
-use std::time::Duration;
+use std::{sync::mpsc::Sender, time::Duration};
 use tokio::sync::mpsc::Receiver;
+use uniclip_proto::ClipMsg;
 
 #[derive(NetworkBehaviour)]
 #[behaviour(event_process = true)]
@@ -24,7 +24,7 @@ struct MyBehaviour {
     mdns: Mdns,
 
     #[behaviour(ignore)]
-    from_net_tx: std::sync::mpsc::Sender<ClipMsg>,
+    from_net_tx: Sender<ClipMsg>,
 }
 
 impl NetworkBehaviourEventProcess<GossipsubEvent> for MyBehaviour {
@@ -62,25 +62,17 @@ impl NetworkBehaviourEventProcess<MdnsEvent> for MyBehaviour {
     }
 }
 
-pub async fn trans(
-    settings: &Settings,
-    from_net_tx: std::sync::mpsc::Sender<ClipMsg>,
-    to_net_rx: Receiver<ClipMsg>,
-) -> ! {
-    // Create a random PeerId
+pub async fn trans(topic: &str, from_net_tx: Sender<ClipMsg>, to_net_rx: Receiver<ClipMsg>) -> ! {
     let local_key = identity::Keypair::generate_ed25519();
     let local_peer_id = PeerId::from(local_key.public());
     println!("Local peer id: {:?}", local_peer_id);
 
-    let topic = Topic::new(settings.domain.to_owned());
+    let topic = Topic::new(topic.to_owned());
 
-    // Create a keypair for authenticated encryption of the transport.
     let noise_keys = noise::Keypair::<noise::X25519Spec>::new()
         .into_authentic(&local_key)
         .expect("Signing libp2p-noise static DH keypair failed.");
 
-    // Create a tokio-based TCP transport use noise for authenticated
-    // encryption and Mplex for multiplexing of substreams on a TCP stream.
     let transport = TokioTcpConfig::new()
         .nodelay(true)
         .upgrade(upgrade::Version::V1)
@@ -89,17 +81,16 @@ pub async fn trans(
         .boxed();
 
     let gossipsub_config = gossipsub::GossipsubConfigBuilder::default()
-        .heartbeat_interval(Duration::from_secs(10)) // This is set to aid debugging by not cluttering the log space
-        .validation_mode(ValidationMode::Strict) // This sets the kind of message validation. The default is Strict (enforce message signing)
+        .heartbeat_interval(Duration::from_secs(10))
+        .validation_mode(ValidationMode::Strict)
         .max_transmit_size(1024 * 1024 * 50)
         .build()
         .expect("Valid config");
-    // build a gossipsub network behaviour
-    let gossipsub: gossipsub::Gossipsub =
+
+    let gossipsub =
         gossipsub::Gossipsub::new(MessageAuthenticity::Signed(local_key), gossipsub_config)
             .expect("Correct configuration");
 
-    // Create a Swarm to manage peers and events.
     let mut swarm = {
         let mdns = Mdns::new(Default::default()).await.unwrap();
         let mut behaviour = MyBehaviour {

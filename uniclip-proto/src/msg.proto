@@ -1,6 +1,6 @@
 syntax = "proto3";
 
-package proto;
+package msg;
 
 message ClipMsg {
     uint32 id = 1;
