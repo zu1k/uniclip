@@ -1,5 +1,5 @@
 [package]
-name = "uniclip-android"
+name = "uniclip-android-lib"
 version = "0.1.0"
 edition = "2021"
 authors = ["zu1k <i@zu1k.com>"]
@@ -13,4 +13,5 @@ tokio = { version = "1.18", features = ["sync", "rt-multi-thread", "macros"] }
 
 
 [lib]
+name = "uniclip"
 crate-type = ["lib", "cdylib"]

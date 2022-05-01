@@ -42,7 +42,7 @@ LegalCopyright = "Copyright © 2022"
 
 [workspace]
 members = [
-    "uniclip-android",
+    "uniclip-android-lib",
     "uniclip-proto",
     "uniclip-net",
 ]

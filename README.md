@@ -5,7 +5,7 @@
 - Text
 - Image
 
-## Supported OSS
+## Supported OS
 
 - Windows
 - Linux

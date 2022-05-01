@@ -1,3 +1,5 @@
+#![allow(unused_variables)]
+
 use jni::{
     objects::{GlobalRef, JClass, JObject, JString},
     sys::{jbyteArray, jint, jlong, jstring},
@@ -44,4 +46,13 @@ pub extern "system" fn Java_HelloWorld_hello(env: JNIEnv, _class: JClass, topic:
         .into();
 
     start_net(topic)
+}
+
+
+#[no_mangle]
+pub extern "system" fn Java_com_zu1k_uniclip_MainActivity_stringFromJNI(env: JNIEnv, _class: JClass) -> jstring {
+    let output = env
+    .new_string("uniclip from Rust lib".to_string())
+    .expect("Couldn't create java string!");
+    output.into_inner()
 }

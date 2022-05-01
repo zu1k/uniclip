@@ -2869,7 +2869,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "uniclip-android"
+name = "uniclip-android-lib"
 version = "0.1.0"
 dependencies = [
  "jni",
