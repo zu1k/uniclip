@@ -2,6 +2,7 @@
 name = "uniclip-proto"
 version = "0.1.0"
 edition = "2021"
+authors = ["zu1k <i@zu1k.com>"]
 
 [dependencies]
 prost = "0.10"

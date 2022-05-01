@@ -2,9 +2,15 @@
 name = "uniclip-android"
 version = "0.1.0"
 edition = "2021"
+authors = ["zu1k <i@zu1k.com>"]
 
 
 [dependencies]
+jni = "0.19"
 uniclip-net = { path = "../uniclip-net" }
 uniclip-proto = { path = "../uniclip-proto" }
 tokio = { version = "1.18", features = ["sync", "rt-multi-thread", "macros"] }
+
+
+[lib]
+crate-type = ["lib", "cdylib"]

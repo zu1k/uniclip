@@ -6,7 +6,6 @@
 use config::Config;
 use serde::Deserialize;
 use std::sync::Arc;
-use tokio::sync::mpsc::{channel, Receiver, Sender};
 
 mod clip;
 use clip::*;
@@ -27,10 +26,7 @@ fn main() {
     let settings = settings.try_deserialize::<Settings>().unwrap();
 
     let (from_net_tx, from_net_rx) = std::sync::mpsc::channel();
-    let (to_net_tx, to_net_rx): (
-        Sender<uniclip_proto::ClipMsg>,
-        Receiver<uniclip_proto::ClipMsg>,
-    ) = channel(10);
+    let (to_net_tx, to_net_rx) = tokio::sync::mpsc::channel(10);
 
     std::thread::spawn(move || {
         tokio::runtime::Builder::new_multi_thread()
