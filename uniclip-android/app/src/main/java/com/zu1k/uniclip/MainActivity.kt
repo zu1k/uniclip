@@ -2,13 +2,14 @@ package com.zu1k.uniclip
 
 import androidx.appcompat.app.AppCompatActivity
 import android.os.Bundle
-import android.widget.TextView
+import android.content.Intent
 import com.zu1k.uniclip.databinding.ActivityMainBinding
+import kotlin.concurrent.thread
 
 class MainActivity : AppCompatActivity() {
+    private lateinit var clipboard: ClipboardMonitorService;
 
     private lateinit var binding: ActivityMainBinding
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
@@ -17,16 +18,25 @@ class MainActivity : AppCompatActivity() {
 
         // Example of a call to a native method
         binding.sampleText.text = stringFromJNI()
+        binding.root.setOnClickListener {
+            clipboard.listenClipboard()
+        }
+
+
+        clipboard =  ClipboardMonitorService(baseContext);
+
+        thread(start = true) {
+            println("running from thread(): ${Thread.currentThread()}")
+            start("uniclip-android", clipboard)
+        }
+
+        startService(Intent(this, ClipboardMonitorService::class.java))
     }
 
-    /**
-     * A native method that is implemented by the 'uniclip' native library,
-     * which is packaged with this application.
-     */
     external fun stringFromJNI(): String
+    external fun start(topic: String, callback: ClipboardMonitorService)
 
     companion object {
-        // Used to load the 'uniclip' library on application startup.
         init {
             System.loadLibrary("uniclip")
         }

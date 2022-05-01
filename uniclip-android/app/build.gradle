@@ -40,15 +40,15 @@ apply plugin: 'org.mozilla.rust-android-gradle.rust-android'
 cargo {
     module  = "../../uniclip-android-lib"
     libname = "uniclip"
-    targets = ["arm64", "x86_64"]
+    targets = ["arm64"]
     targetDirectory = "${module}/../target"
 }
 
-tasks.whenTaskAdded { task ->
-    if ((task.name == 'javaPreCompileDebug' || task.name == 'javaPreCompileRelease')) {
-        task.dependsOn 'cargoBuild'
-    }
-}
+//tasks.whenTaskAdded { task ->
+//    if ((task.name == 'javaPreCompileDebug' || task.name == 'javaPreCompileRelease')) {
+//        task.dependsOn 'cargoBuild'
+//    }
+//}
 
 dependencies {
     implementation 'androidx.core:core-ktx:1.7.0'
