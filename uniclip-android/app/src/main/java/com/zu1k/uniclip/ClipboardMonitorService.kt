@@ -54,7 +54,7 @@ class ClipboardMonitorService(): Service() {
 
     override fun onDestroy() {
         super.onDestroy()
-//        clipboard.removePrimaryClipChangedListener(mOnPrimaryClipChangedListener)
+        clipboard.removePrimaryClipChangedListener(mOnPrimaryClipChangedListener)
     }
 
     override fun onBind(intent: Intent?): IBinder? {

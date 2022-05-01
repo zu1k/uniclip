@@ -10,6 +10,7 @@
 - Windows
 - Linux
 - MacOS
+- Android
 
 ## Author
 
