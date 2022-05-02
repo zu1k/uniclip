@@ -3,7 +3,6 @@
 #[macro_use]
 extern crate lazy_static;
 
-use android_logger::Config;
 use jni::{
     objects::{JClass, JObject, JString},
     sys::jstring,
@@ -15,7 +14,7 @@ use uniclip_proto::{clip_msg::MsgType, ClipMsg};
 
 fn native_activity_create() {
     android_logger::init_once(
-        Config::default()
+        android_logger::Config::default()
             .with_min_level(Level::Trace)
             .with_tag("uniclip"),
     );
@@ -34,13 +33,18 @@ struct Net {
 
 impl Net {
     fn start(self) {
+        let config = uniclip_net::Config {
+            dir: ".".to_string(),
+            topic: self.topic,
+        };
+
         tokio::runtime::Builder::new_multi_thread()
             .enable_all()
             .build()
             .unwrap()
-            .block_on(async move {
-                uniclip_net::trans(&self.topic, self.from_net_tx, self.to_net_rx).await
-            });
+            .block_on(
+                async move { uniclip_net::trans(config, self.from_net_tx, self.to_net_rx).await },
+            );
     }
 }
 

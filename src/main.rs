@@ -29,13 +29,16 @@ fn main() {
     let (to_net_tx, to_net_rx) = tokio::sync::mpsc::channel(10);
 
     std::thread::spawn(move || {
+        let net_config = uniclip_net::Config {
+            dir: ".".to_string(),
+            topic: settings.domain.to_string(),
+        };
+
         tokio::runtime::Builder::new_multi_thread()
             .enable_all()
             .build()
             .unwrap()
-            .block_on(
-                async move { uniclip_net::trans(&settings.domain, from_net_tx, to_net_rx).await },
-            );
+            .block_on(async move { uniclip_net::trans(net_config, from_net_tx, to_net_rx).await });
     });
 
     let clip = Arc::new(Clip::new());

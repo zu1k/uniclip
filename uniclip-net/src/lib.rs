@@ -13,7 +13,13 @@ use libp2p::{
     NetworkBehaviour, PeerId, Transport,
 };
 use prost::Message;
-use std::{sync::mpsc::Sender, time::Duration, fs, io::{Read, Write}};
+use std::{
+    fs,
+    io::{Read, Write},
+    path,
+    sync::mpsc::Sender,
+    time::Duration,
+};
 use tokio::sync::mpsc::Receiver;
 use uniclip_proto::ClipMsg;
 
@@ -62,36 +68,44 @@ impl NetworkBehaviourEventProcess<MdnsEvent> for MyBehaviour {
     }
 }
 
-pub fn get_local_keypair_peerid() -> (Keypair, PeerId) {
-    let filepath = "keypair";
+pub fn get_local_keypair_peerid(config: &Config) -> (Keypair, PeerId) {
+    let filepath = path::Path::new(&config.dir).join("keypair");
 
-    let keypair = match fs::File::open(filepath) {
+    let keypair = match fs::File::open(&filepath) {
         Ok(mut file) => {
             let mut buffer = vec![0; file.metadata().unwrap().len() as usize];
             file.read(&mut buffer).expect("buffer overflow");
             let keypair = Keypair::from_protobuf_encoding(&buffer).unwrap();
             keypair
-        },
+        }
         Err(_) => {
             let keypair = identity::Keypair::generate_ed25519();
             let buffer = keypair.to_protobuf_encoding().unwrap();
-            if let Ok(mut file) = fs::File::create(filepath) {
+            if let Ok(mut file) = fs::File::create(&filepath) {
                 file.write(&buffer).unwrap();
             }
             keypair
-        },
+        }
     };
 
     let peer_id = PeerId::from(keypair.public());
     (keypair, peer_id)
 }
 
+pub struct Config {
+    pub dir: String,
+    pub topic: String,
+}
 
-pub async fn trans(topic: &str, from_net_tx: Sender<ClipMsg>, to_net_rx: Receiver<ClipMsg>) -> ! {
-    let (local_key, local_peer_id) = get_local_keypair_peerid();
+pub async fn trans(
+    config: Config,
+    from_net_tx: Sender<ClipMsg>,
+    to_net_rx: Receiver<ClipMsg>,
+) -> ! {
+    let (local_key, local_peer_id) = get_local_keypair_peerid(&config);
     println!("Local peer id: {:?}", local_peer_id);
 
-    let topic = Topic::new(topic.to_owned());
+    let topic = Topic::new(config.topic);
 
     let noise_keys = noise::Keypair::<noise::X25519Spec>::new()
         .into_authentic(&local_key)
