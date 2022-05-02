@@ -5,7 +5,7 @@ use libp2p::{
         self, error::PublishError, Gossipsub, GossipsubEvent, IdentTopic as Topic,
         MessageAuthenticity, ValidationMode,
     },
-    identity,
+    identity::{self, Keypair},
     mdns::{Mdns, MdnsEvent},
     mplex, noise,
     swarm::{NetworkBehaviourEventProcess, SwarmBuilder, SwarmEvent},
@@ -13,7 +13,7 @@ use libp2p::{
     NetworkBehaviour, PeerId, Transport,
 };
 use prost::Message;
-use std::{sync::mpsc::Sender, time::Duration};
+use std::{sync::mpsc::Sender, time::Duration, fs, io::{Read, Write}};
 use tokio::sync::mpsc::Receiver;
 use uniclip_proto::ClipMsg;
 
@@ -62,9 +62,33 @@ impl NetworkBehaviourEventProcess<MdnsEvent> for MyBehaviour {
     }
 }
 
+pub fn get_local_keypair_peerid() -> (Keypair, PeerId) {
+    let filepath = "keypair";
+
+    let keypair = match fs::File::open(filepath) {
+        Ok(mut file) => {
+            let mut buffer = vec![0; file.metadata().unwrap().len() as usize];
+            file.read(&mut buffer).expect("buffer overflow");
+            let keypair = Keypair::from_protobuf_encoding(&buffer).unwrap();
+            keypair
+        },
+        Err(_) => {
+            let keypair = identity::Keypair::generate_ed25519();
+            let buffer = keypair.to_protobuf_encoding().unwrap();
+            if let Ok(mut file) = fs::File::create(filepath) {
+                file.write(&buffer).unwrap();
+            }
+            keypair
+        },
+    };
+
+    let peer_id = PeerId::from(keypair.public());
+    (keypair, peer_id)
+}
+
+
 pub async fn trans(topic: &str, from_net_tx: Sender<ClipMsg>, to_net_rx: Receiver<ClipMsg>) -> ! {
-    let local_key = identity::Keypair::generate_ed25519();
-    let local_peer_id = PeerId::from(local_key.public());
+    let (local_key, local_peer_id) = get_local_keypair_peerid();
     println!("Local peer id: {:?}", local_peer_id);
 
     let topic = Topic::new(topic.to_owned());

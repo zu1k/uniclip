@@ -25,7 +25,7 @@ class MainActivity : AppCompatActivity() {
 
         thread(start = true) {
             println("running from thread(): ${Thread.currentThread()}")
-            start("uniclip-android", clipboard)
+            start("fzz", clipboard)
         }
     }
 
