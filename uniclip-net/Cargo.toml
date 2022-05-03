@@ -6,8 +6,24 @@ authors = ["zu1k <i@zu1k.com>"]
 
 
 [dependencies]
-libp2p = { version = "0.44", default-features = false, features = ["tcp-tokio", "gossipsub", "mdns", "mplex", "noise"] }
 futures = "0.3"
 tokio = { version = "1.18", features = ["sync", "rt-multi-thread", "macros"] }
 prost = "0.10"
 uniclip-proto = { path = "../uniclip-proto" }
+
+[dependencies.libp2p]
+# path = "../../crates/rust-libp2p"
+git = "https://github.com/libp2p/rust-libp2p.git"
+default-features = false
+features = [
+    "autonat",
+    # "dcutr",
+    "tcp-tokio",
+    "gossipsub",
+    "mdns",
+    "mplex",
+    "noise",
+    "pnet",
+    "relay",
+    "rendezvous",
+]
