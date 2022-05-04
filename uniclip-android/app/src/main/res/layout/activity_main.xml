@@ -16,4 +16,28 @@
         app:layout_constraintRight_toRightOf="parent"
         app:layout_constraintTop_toTopOf="parent" />
 
+    <LinearLayout
+        android:layout_width="408dp"
+        android:layout_height="187dp"
+        android:orientation="vertical"
+        tools:layout_editor_absoluteX="1dp"
+        tools:layout_editor_absoluteY="1dp">
+
+        <EditText
+            android:id="@+id/editTextTextTopic"
+            android:layout_width="match_parent"
+            android:layout_height="88dp"
+            android:ems="10"
+            android:hint="@string/topic"
+            android:inputType="textPersonName"
+            android:text="UniClip"
+            android:autofillHints="" />
+
+        <Button
+            android:id="@+id/button"
+            android:layout_width="match_parent"
+            android:layout_height="64dp"
+            android:text="Start" />
+    </LinearLayout>
+
 </androidx.constraintlayout.widget.ConstraintLayout>

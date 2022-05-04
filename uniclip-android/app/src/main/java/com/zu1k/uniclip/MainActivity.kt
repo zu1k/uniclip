@@ -23,9 +23,16 @@ class MainActivity : AppCompatActivity() {
         clipboard =  ClipboardMonitorService(baseContext);
         startService(Intent(this, ClipboardMonitorService::class.java))
 
-        thread(start = true) {
-            println("running from thread(): ${Thread.currentThread()}")
-            start("fzz", clipboard)
+        binding.button.setOnClickListener {
+            val topic = binding.editTextTextTopic.text.toString()
+            thread(start = true) {
+                println("running from thread(): ${Thread.currentThread()}")
+                start(topic, clipboard)
+            }
+            binding.button.setBackgroundColor(resources.getColor(R.color.red, theme))
+            binding.button.text = "Stop"
+
+            binding.button.setOnClickListener {  }
         }
     }
 
