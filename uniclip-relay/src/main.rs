@@ -10,6 +10,7 @@ use libp2p::{
     noise,
     ping::{Ping, PingConfig, PingEvent},
     relay::v2::relay::{self, Relay},
+    rendezvous,
     swarm::{Swarm, SwarmEvent},
     tcp::TokioTcpConfig,
     Multiaddr, NetworkBehaviour, PeerId, Transport,
@@ -56,11 +57,32 @@ fn main() -> Result<(), Box<dyn Error>> {
     block_on(async {
         loop {
             match swarm.next().await.expect("Infinite Stream.") {
+                SwarmEvent::NewListenAddr { address, .. } => {
+                    println!("Listening on {:?}", address);
+                }
                 SwarmEvent::Behaviour(Event::Relay(event)) => {
                     println!("{:?}", event)
                 }
-                SwarmEvent::NewListenAddr { address, .. } => {
-                    println!("Listening on {:?}", address);
+                SwarmEvent::Behaviour(Event::Rendezvous(
+                    rendezvous::server::Event::PeerRegistered { peer, registration },
+                )) => {
+                    log::info!(
+                        "Peer {} registered for namespace '{}'",
+                        peer,
+                        registration.namespace
+                    );
+                }
+                SwarmEvent::Behaviour(Event::Rendezvous(
+                    rendezvous::server::Event::DiscoverServed {
+                        enquirer,
+                        registrations,
+                    },
+                )) => {
+                    log::info!(
+                        "Served peer {} with {} registrations",
+                        enquirer,
+                        registrations.len()
+                    );
                 }
                 _ => {}
             }
@@ -75,6 +97,7 @@ struct Behaviour {
     ping: Ping,
     identify: Identify,
     auto_nat: autonat::Behaviour,
+    rendezvous: rendezvous::server::Behaviour,
 }
 
 impl Behaviour {
@@ -83,10 +106,11 @@ impl Behaviour {
             relay: Relay::new(local_peer_id, Default::default()),
             ping: Ping::new(PingConfig::new()),
             identify: Identify::new(IdentifyConfig::new(
-                "/ipfs/0.1.0".to_string(),
+                "/uniclip/0.1.0".to_string(),
                 local_key.public(),
             )),
             auto_nat: autonat::Behaviour::new(local_peer_id, autonat::Config::default()),
+            rendezvous: rendezvous::server::Behaviour::new(rendezvous::server::Config::default()),
         }
     }
 }
@@ -97,6 +121,7 @@ enum Event {
     Ping(PingEvent),
     Identify(IdentifyEvent),
     Relay(relay::Event),
+    Rendezvous(rendezvous::server::Event),
 }
 
 impl From<PingEvent> for Event {
@@ -120,6 +145,12 @@ impl From<relay::Event> for Event {
 impl From<autonat::Event> for Event {
     fn from(v: autonat::Event) -> Self {
         Self::AutoNat(v)
+    }
+}
+
+impl From<rendezvous::server::Event> for Event {
+    fn from(event: rendezvous::server::Event) -> Self {
+        Event::Rendezvous(event)
     }
 }
 

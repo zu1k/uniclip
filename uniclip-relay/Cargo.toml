@@ -2,13 +2,14 @@
 name = "uniclip-relay"
 version = "0.1.0"
 edition = "2021"
-description = "relay, autonat"
+description = "relay, autonat, rendezvous"
 
 
 [dependencies]
 clap = { version = "3.1", features = ["derive"] }
 env_logger = "0.9"
 futures = "0.3"
+log = "0.4"
 
 
 [dependencies.libp2p]
@@ -20,10 +21,8 @@ features = [
     "identify",
     "autonat",
     "tcp-tokio",
-    "mdns",
     "mplex",
     "noise",
-    "pnet",
     "relay",
     "rendezvous",
 ]
