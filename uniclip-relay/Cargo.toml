@@ -1,0 +1,29 @@
+[package]
+name = "uniclip-relay"
+version = "0.1.0"
+edition = "2021"
+description = "relay, autonat"
+
+
+[dependencies]
+clap = { version = "3.1", features = ["derive"] }
+env_logger = "0.9"
+futures = "0.3"
+
+
+[dependencies.libp2p]
+# path = "../../crates/rust-libp2p"
+git = "https://github.com/libp2p/rust-libp2p.git"
+default-features = false
+features = [
+    "ping",
+    "identify",
+    "autonat",
+    "tcp-tokio",
+    "mdns",
+    "mplex",
+    "noise",
+    "pnet",
+    "relay",
+    "rendezvous",
+]
