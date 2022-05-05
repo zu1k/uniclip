@@ -45,4 +45,5 @@ members = [
     "uniclip-android-lib",
     "uniclip-proto",
     "uniclip-net",
+    "uniclip-relay",
 ]

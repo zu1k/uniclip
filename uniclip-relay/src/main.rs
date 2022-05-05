@@ -1,5 +1,5 @@
 use clap::Parser;
-use futures::{executor::block_on, stream::StreamExt};
+use futures::stream::StreamExt;
 use libp2p::{
     autonat,
     core::upgrade,
@@ -16,19 +16,26 @@ use libp2p::{
     Multiaddr, NetworkBehaviour, PeerId, Transport,
 };
 use std::{
-    error::Error,
     fs,
     io::{Read, Write},
     net::{Ipv4Addr, Ipv6Addr},
 };
 
-fn main() -> Result<(), Box<dyn Error>> {
+fn main() {
     env_logger::init();
 
+    tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .unwrap()
+        .block_on(run());
+}
+
+async fn run() {
     let opt = Opt::parse();
     println!("opt: {:?}", opt);
 
-    let (local_key, local_peer_id) = get_local_keypair_peerid("keypath");
+    let (local_key, local_peer_id) = get_local_keypair_peerid("keypair");
     println!("Local peer id: {:?}", local_peer_id);
 
     let noise_keys = noise::Keypair::<noise::X25519Spec>::new()
@@ -52,42 +59,41 @@ fn main() -> Result<(), Box<dyn Error>> {
             _ => Protocol::from(Ipv4Addr::UNSPECIFIED),
         })
         .with(Protocol::Tcp(opt.port));
-    swarm.listen_on(listen_addr)?;
 
-    block_on(async {
-        loop {
-            match swarm.next().await.expect("Infinite Stream.") {
-                SwarmEvent::NewListenAddr { address, .. } => {
-                    println!("Listening on {:?}", address);
-                }
-                SwarmEvent::Behaviour(Event::Relay(event)) => {
-                    println!("{:?}", event)
-                }
-                SwarmEvent::Behaviour(Event::Rendezvous(
-                    rendezvous::server::Event::PeerRegistered { peer, registration },
-                )) => {
-                    log::info!(
-                        "Peer {} registered for namespace '{}'",
-                        peer,
-                        registration.namespace
-                    );
-                }
-                SwarmEvent::Behaviour(Event::Rendezvous(
-                    rendezvous::server::Event::DiscoverServed {
-                        enquirer,
-                        registrations,
-                    },
-                )) => {
-                    log::info!(
-                        "Served peer {} with {} registrations",
-                        enquirer,
-                        registrations.len()
-                    );
-                }
-                _ => {}
+    swarm.listen_on(listen_addr).unwrap();
+
+    loop {
+        match swarm.next().await.expect("Infinite Stream.") {
+            SwarmEvent::NewListenAddr { address, .. } => {
+                println!("Listening on {:?}", address);
             }
+            SwarmEvent::Behaviour(Event::Relay(event)) => {
+                println!("{:?}", event)
+            }
+            SwarmEvent::Behaviour(Event::Rendezvous(
+                rendezvous::server::Event::PeerRegistered { peer, registration },
+            )) => {
+                log::info!(
+                    "Peer {} registered for namespace '{}'",
+                    peer,
+                    registration.namespace
+                );
+            }
+            SwarmEvent::Behaviour(Event::Rendezvous(
+                rendezvous::server::Event::DiscoverServed {
+                    enquirer,
+                    registrations,
+                },
+            )) => {
+                log::info!(
+                    "Served peer {} with {} registrations",
+                    enquirer,
+                    registrations.len()
+                );
+            }
+            _ => {}
         }
-    })
+    }
 }
 
 #[derive(NetworkBehaviour)]
