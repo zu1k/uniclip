@@ -17,9 +17,10 @@ git = "https://github.com/libp2p/rust-libp2p.git"
 default-features = false
 features = [
     "autonat",
-    # "dcutr",
+    "dcutr",
+    "dns-async-std",
     "identify",
-    "tcp-tokio",
+    "tcp-async-io",
     "gossipsub",
     "mdns",
     "mplex",

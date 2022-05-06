@@ -1,7 +1,12 @@
-use futures::StreamExt;
+use futures::{executor::block_on, StreamExt};
 use libp2p::{
     autonat,
-    core::upgrade,
+    core::{transport::OrTransport, upgrade},
+    dcutr::{
+        self,
+        behaviour::{Behaviour as DcutrBehaviour, Event as DcutrEvent},
+    },
+    dns::DnsConfig,
     gossipsub::{
         self, error::PublishError, Gossipsub, GossipsubEvent, IdentTopic as Topic,
         MessageAuthenticity, ValidationMode,
@@ -9,9 +14,12 @@ use libp2p::{
     identify::{Identify, IdentifyConfig, IdentifyEvent},
     identity::{self, Keypair},
     mdns::{Mdns, MdnsEvent},
-    mplex, noise,
+    mplex::MplexConfig,
+    multiaddr::Protocol,
+    noise,
+    relay::v2::client::{self, Client as RelayClient, Event as RelayEvent},
     swarm::{NetworkBehaviourEventProcess, SwarmBuilder, SwarmEvent},
-    tcp::TokioTcpConfig,
+    tcp::TcpConfig,
     Multiaddr, NetworkBehaviour, PeerId, Transport,
 };
 use prost::Message;
@@ -71,12 +79,16 @@ pub async fn trans(
         .into_authentic(&local_key)
         .expect("Signing libp2p-noise static DH keypair failed.");
 
-    let transport = TokioTcpConfig::new()
-        .nodelay(true)
-        .upgrade(upgrade::Version::V1)
-        .authenticate(noise::NoiseConfig::xx(noise_keys).into_authenticated())
-        .multiplex(mplex::MplexConfig::new())
-        .boxed();
+    let (relay_transport, relay_client) = RelayClient::new_transport_and_behaviour(local_peer_id);
+
+    let transport = OrTransport::new(
+        block_on(DnsConfig::system(TcpConfig::new().port_reuse(true))).unwrap(),
+        relay_transport,
+    )
+    .upgrade(upgrade::Version::V1)
+    .authenticate(noise::NoiseConfig::xx(noise_keys).into_authenticated())
+    .multiplex(MplexConfig::new())
+    .boxed();
 
     let gossipsub_config = gossipsub::GossipsubConfigBuilder::default()
         .heartbeat_interval(Duration::from_secs(10))
@@ -109,6 +121,10 @@ pub async fn trans(
                     ..Default::default()
                 },
             ),
+
+            relay_client,
+            dcutr: DcutrBehaviour::new(),
+
             from_net_tx,
         };
 
@@ -123,32 +139,39 @@ pub async fn trans(
             .build()
     };
 
-    // Listen on all interfaces and whatever port the OS assigns
     swarm
         .listen_on("/ip4/0.0.0.0/tcp/0".parse().unwrap())
         .unwrap();
 
     // connect relay
-    if let Some(relay_server_peer_id) = config.relay_server_peer_id {
-        swarm
-            .behaviour_mut()
-            .auto_nat
-            .add_server(relay_server_peer_id, config.relay_server_address);
-    }
-    swarm.behaviour_mut().auto_nat.add_server(
-        "12D3KooWNoSoxPRWovwRFnheDwrgo6cufbYGtWSrfKXVhSDxTzSV"
-            .parse()
-            .unwrap(),
-        Some("/ip4/42.193.117.213/tcp/34567".parse().unwrap()),
-    );
-    swarm.behaviour_mut().auto_nat.add_server(
-        "12D3KooWMSParmkzM94snqrvTZLsshWVwtSx1tmgyYrDwbpWyZqN"
-            .parse()
-            .unwrap(),
-        Some("/ip4/192.168.226.176/tcp/34567".parse().unwrap()),
-    );
+    {
+        if let Some(relay_server_peer_id) = config.relay_server_peer_id {
+            swarm
+                .behaviour_mut()
+                .auto_nat
+                .add_server(relay_server_peer_id, config.relay_server_address.clone());
 
-    // Kick it off
+            if let Some(relay_server_address) = config.relay_server_address {
+                swarm
+                    .listen_on(relay_server_address.with(Protocol::P2pCircuit))
+                    .unwrap();
+            }
+        }
+
+        // my dev server
+        let dev_relay_address: Multiaddr = "/ip4/42.193.117.213/tcp/34567".parse().unwrap();
+        let dev_relay_address_p2p: Multiaddr = "/ip4/42.193.117.213/tcp/34567/p2p/12D3KooWNoSoxPRWovwRFnheDwrgo6cufbYGtWSrfKXVhSDxTzSV".parse().unwrap();
+        swarm.behaviour_mut().auto_nat.add_server(
+            "12D3KooWNoSoxPRWovwRFnheDwrgo6cufbYGtWSrfKXVhSDxTzSV"
+                .parse()
+                .unwrap(),
+            Some(dev_relay_address.clone()),
+        );
+        swarm
+            .listen_on(dev_relay_address_p2p.with(Protocol::P2pCircuit))
+            .unwrap();
+    }
+
     let mut to_net_rx = to_net_rx;
     loop {
         tokio::select! {
@@ -184,6 +207,9 @@ struct Behaviour {
     identify: Identify,
     #[behaviour(event_process = false)]
     auto_nat: autonat::Behaviour,
+
+    relay_client: RelayClient,
+    dcutr: DcutrBehaviour,
 
     #[behaviour(ignore)]
     from_net_tx: Sender<ClipMsg>,
@@ -230,6 +256,8 @@ enum Event {
     Identify(IdentifyEvent),
     Mdns(MdnsEvent),
     Gossipsub(GossipsubEvent),
+    Relay(RelayEvent),
+    Dcutr(DcutrEvent),
 }
 
 impl From<autonat::Event> for Event {
@@ -253,5 +281,17 @@ impl From<MdnsEvent> for Event {
 impl From<GossipsubEvent> for Event {
     fn from(v: GossipsubEvent) -> Self {
         Self::Gossipsub(v)
+    }
+}
+
+impl From<client::Event> for Event {
+    fn from(e: client::Event) -> Self {
+        Event::Relay(e)
+    }
+}
+
+impl From<dcutr::behaviour::Event> for Event {
+    fn from(e: dcutr::behaviour::Event) -> Self {
+        Event::Dcutr(e)
     }
 }
