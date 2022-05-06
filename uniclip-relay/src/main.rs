@@ -1,5 +1,5 @@
 use clap::Parser;
-use futures::stream::StreamExt;
+use futures::{executor::block_on, stream::StreamExt};
 use libp2p::{
     autonat,
     core::upgrade,
@@ -12,7 +12,7 @@ use libp2p::{
     relay::v2::relay::{self, Relay},
     rendezvous,
     swarm::{Swarm, SwarmEvent},
-    tcp::TokioTcpConfig,
+    tcp::TcpConfig,
     Multiaddr, NetworkBehaviour, PeerId, Transport,
 };
 use std::{
@@ -24,11 +24,7 @@ use std::{
 fn main() {
     env_logger::init();
 
-    tokio::runtime::Builder::new_multi_thread()
-        .enable_all()
-        .build()
-        .unwrap()
-        .block_on(run());
+    block_on(run());
 }
 
 async fn run() {
@@ -42,7 +38,7 @@ async fn run() {
         .into_authentic(&local_key)
         .expect("Signing libp2p-noise static DH keypair failed.");
 
-    let transport = TokioTcpConfig::new()
+    let transport = TcpConfig::new()
         .nodelay(true)
         .upgrade(upgrade::Version::V1)
         .authenticate(noise::NoiseConfig::xx(noise_keys).into_authenticated())
@@ -63,7 +59,7 @@ async fn run() {
     swarm.listen_on(listen_addr).unwrap();
 
     loop {
-        match swarm.next().await.expect("Infinite Stream.") {
+        match swarm.next().await.unwrap() {
             SwarmEvent::NewListenAddr { address, .. } => {
                 println!("Listening on {:?}", address);
             }

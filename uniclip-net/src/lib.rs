@@ -1,16 +1,18 @@
 use futures::StreamExt;
 use libp2p::{
+    autonat,
     core::upgrade,
     gossipsub::{
         self, error::PublishError, Gossipsub, GossipsubEvent, IdentTopic as Topic,
         MessageAuthenticity, ValidationMode,
     },
+    identify::{Identify, IdentifyConfig, IdentifyEvent},
     identity::{self, Keypair},
     mdns::{Mdns, MdnsEvent},
     mplex, noise,
     swarm::{NetworkBehaviourEventProcess, SwarmBuilder, SwarmEvent},
     tcp::TokioTcpConfig,
-    NetworkBehaviour, PeerId, Transport,
+    Multiaddr, NetworkBehaviour, PeerId, Transport,
 };
 use prost::Message;
 use std::{
@@ -22,51 +24,6 @@ use std::{
 };
 use tokio::sync::mpsc::Receiver;
 use uniclip_proto::ClipMsg;
-
-#[derive(NetworkBehaviour)]
-#[behaviour(event_process = true)]
-struct MyBehaviour {
-    gossipsub: Gossipsub,
-    mdns: Mdns,
-
-    #[behaviour(ignore)]
-    from_net_tx: Sender<ClipMsg>,
-}
-
-impl NetworkBehaviourEventProcess<GossipsubEvent> for MyBehaviour {
-    fn inject_event(&mut self, message: GossipsubEvent) {
-        if let GossipsubEvent::Message {
-            propagation_source: _,
-            message_id: _,
-            message,
-        } = message
-        {
-            if let Ok(clip_msg) = ClipMsg::decode(message.data.as_slice()) {
-                self.from_net_tx.send(clip_msg).unwrap();
-            }
-        }
-    }
-}
-
-impl NetworkBehaviourEventProcess<MdnsEvent> for MyBehaviour {
-    fn inject_event(&mut self, event: MdnsEvent) {
-        match event {
-            MdnsEvent::Discovered(list) => {
-                for (peer, addr) in list {
-                    println!("new peer: {peer} - {addr}");
-                    self.gossipsub.add_explicit_peer(&peer);
-                }
-            }
-            MdnsEvent::Expired(list) => {
-                for (peer, _) in list {
-                    if !self.mdns.has_node(&peer) {
-                        self.gossipsub.remove_explicit_peer(&peer);
-                    }
-                }
-            }
-        }
-    }
-}
 
 pub fn get_local_keypair_peerid(config: &Config) -> (Keypair, PeerId) {
     let filepath = path::Path::new(&config.dir).join("keypair");
@@ -95,6 +52,9 @@ pub fn get_local_keypair_peerid(config: &Config) -> (Keypair, PeerId) {
 pub struct Config {
     pub dir: String,
     pub topic: String,
+
+    pub relay_server_address: Option<Multiaddr>,
+    pub relay_server_peer_id: Option<PeerId>,
 }
 
 pub async fn trans(
@@ -125,15 +85,30 @@ pub async fn trans(
         .build()
         .expect("Valid config");
 
-    let gossipsub =
-        gossipsub::Gossipsub::new(MessageAuthenticity::Signed(local_key), gossipsub_config)
-            .expect("Correct configuration");
+    let gossipsub = gossipsub::Gossipsub::new(
+        MessageAuthenticity::Signed(local_key.clone()),
+        gossipsub_config,
+    )
+    .expect("Correct configuration");
 
     let mut swarm = {
-        let mdns = Mdns::new(Default::default()).await.unwrap();
-        let mut behaviour = MyBehaviour {
+        let mut behaviour = Behaviour {
             gossipsub,
-            mdns,
+            mdns: Mdns::new(Default::default()).await.unwrap(),
+            identify: Identify::new(IdentifyConfig::new(
+                "/uniclip/0.1.0".into(),
+                local_key.public(),
+            )),
+            auto_nat: autonat::Behaviour::new(
+                local_peer_id,
+                autonat::Config {
+                    retry_interval: Duration::from_secs(10),
+                    refresh_interval: Duration::from_secs(30),
+                    boot_delay: Duration::from_secs(5),
+                    throttle_server_period: Duration::ZERO,
+                    ..Default::default()
+                },
+            ),
             from_net_tx,
         };
 
@@ -152,6 +127,26 @@ pub async fn trans(
     swarm
         .listen_on("/ip4/0.0.0.0/tcp/0".parse().unwrap())
         .unwrap();
+
+    // connect relay
+    if let Some(relay_server_peer_id) = config.relay_server_peer_id {
+        swarm
+            .behaviour_mut()
+            .auto_nat
+            .add_server(relay_server_peer_id, config.relay_server_address);
+    }
+    swarm.behaviour_mut().auto_nat.add_server(
+        "12D3KooWNoSoxPRWovwRFnheDwrgo6cufbYGtWSrfKXVhSDxTzSV"
+            .parse()
+            .unwrap(),
+        Some("/ip4/42.193.117.213/tcp/34567".parse().unwrap()),
+    );
+    swarm.behaviour_mut().auto_nat.add_server(
+        "12D3KooWMSParmkzM94snqrvTZLsshWVwtSx1tmgyYrDwbpWyZqN"
+            .parse()
+            .unwrap(),
+        Some("/ip4/192.168.226.176/tcp/34567".parse().unwrap()),
+    );
 
     // Kick it off
     let mut to_net_rx = to_net_rx;
@@ -175,5 +170,88 @@ pub async fn trans(
                 println!("Listening on {:?}", address);
             }
         }
+    }
+}
+
+#[derive(NetworkBehaviour)]
+#[behaviour(out_event = "Event")]
+struct Behaviour {
+    #[behaviour(event_process = true)]
+    gossipsub: Gossipsub,
+    #[behaviour(event_process = true)]
+    mdns: Mdns,
+    #[behaviour(event_process = false)]
+    identify: Identify,
+    #[behaviour(event_process = false)]
+    auto_nat: autonat::Behaviour,
+
+    #[behaviour(ignore)]
+    from_net_tx: Sender<ClipMsg>,
+}
+
+impl NetworkBehaviourEventProcess<GossipsubEvent> for Behaviour {
+    fn inject_event(&mut self, message: GossipsubEvent) {
+        if let GossipsubEvent::Message {
+            propagation_source: _,
+            message_id: _,
+            message,
+        } = message
+        {
+            if let Ok(clip_msg) = ClipMsg::decode(message.data.as_slice()) {
+                self.from_net_tx.send(clip_msg).unwrap();
+            }
+        }
+    }
+}
+
+impl NetworkBehaviourEventProcess<MdnsEvent> for Behaviour {
+    fn inject_event(&mut self, event: MdnsEvent) {
+        match event {
+            MdnsEvent::Discovered(list) => {
+                for (peer, addr) in list {
+                    println!("new peer: {peer} - {addr}");
+                    self.gossipsub.add_explicit_peer(&peer);
+                }
+            }
+            MdnsEvent::Expired(list) => {
+                for (peer, _) in list {
+                    if !self.mdns.has_node(&peer) {
+                        self.gossipsub.remove_explicit_peer(&peer);
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[derive(Debug)]
+enum Event {
+    AutoNat(autonat::Event),
+    Identify(IdentifyEvent),
+    Mdns(MdnsEvent),
+    Gossipsub(GossipsubEvent),
+}
+
+impl From<autonat::Event> for Event {
+    fn from(v: autonat::Event) -> Self {
+        Self::AutoNat(v)
+    }
+}
+
+impl From<IdentifyEvent> for Event {
+    fn from(v: IdentifyEvent) -> Self {
+        Self::Identify(v)
+    }
+}
+
+impl From<MdnsEvent> for Event {
+    fn from(v: MdnsEvent) -> Self {
+        Self::Mdns(v)
+    }
+}
+
+impl From<GossipsubEvent> for Event {
+    fn from(v: GossipsubEvent) -> Self {
+        Self::Gossipsub(v)
     }
 }

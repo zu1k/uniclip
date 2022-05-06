@@ -36,6 +36,8 @@ impl Net {
         let config = uniclip_net::Config {
             dir: ".".to_string(),
             topic: self.topic,
+            relay_server_address: None,
+            relay_server_peer_id: None,
         };
 
         tokio::runtime::Builder::new_multi_thread()

@@ -1769,9 +1769,11 @@ name = "libp2p-tcp"
 version = "0.33.0"
 source = "git+https://github.com/libp2p/rust-libp2p.git#70d38520fd38012bf6b8dc73d560dcc0311ecbba"
 dependencies = [
+ "async-io",
  "futures",
  "futures-timer",
  "if-addrs",
+ "if-watch",
  "ipnet",
  "libc",
  "libp2p-core",
@@ -3139,7 +3141,6 @@ dependencies = [
  "futures",
  "libp2p",
  "log",
- "tokio",
 ]
 
 [[package]]

@@ -18,6 +18,7 @@ default-features = false
 features = [
     "autonat",
     # "dcutr",
+    "identify",
     "tcp-tokio",
     "gossipsub",
     "mdns",
